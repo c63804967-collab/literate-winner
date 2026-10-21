@@ -1,5 +1,5 @@
 
-name: Diagnostico RDP
+name: RDP
 
 on:
   workflow_dispatch:
@@ -8,71 +8,49 @@ permissions:
   contents: read
 
 jobs:
-  diagnostico:
+  pc-virtual:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 360
 
     steps:
-      - name: Baixar e verificar AnyDesk
-        shell: pwsh
+      - name: Instalar AnyDesk e mostrar ID e senha
+        timeout-minutes: 15
         run: |
-          $ErrorActionPreference = "Stop"
-          $download = "$env:TEMP\AnyDesk.exe"
+          $chars = "abcdefghjkmnpqrstuvwxyz23456789".ToCharArray()
+          $pw = "Ab3-" + (-join ($chars | Get-Random -Count 10))
 
-          Write-Host "Baixando AnyDesk..."
+          $ad = "C:\AnyDesk\AnyDesk.exe"
+          Invoke-WebRequest -Uri "https://download.anydesk.com/AnyDesk.exe" -OutFile "$env:TEMP\AnyDesk.exe"
+          Start-Process "$env:TEMP\AnyDesk.exe" -ArgumentList "--install C:\AnyDesk --start-with-win --silent"
 
-          Invoke-WebRequest `
-            -Uri "https://download.anydesk.com/AnyDesk.exe" `
-            -OutFile $download
+          for ($i = 0; $i -lt 40 -and -not (Test-Path $ad); $i++) { Start-Sleep -Seconds 3 }
+          if (-not (Test-Path $ad)) {
+              Write-Error "AnyDesk nao foi instalado"
+              exit 1
+          }
+          Start-Sleep -Seconds 15
 
-          if (-not (Test-Path $download)) {
-            throw "Download falhou."
+          cmd /c "echo $pw | ""$ad"" --set-password"
+          Start-Sleep -Seconds 5
+
+          $id = ""
+          for ($i = 0; $i -lt 12 -and -not $id; $i++) {
+              $id = (& $ad --get-id | Out-String).Trim()
+              if (-not $id) { Start-Sleep -Seconds 5 }
+          }
+          if (-not $id) {
+              Write-Error "Nao consegui obter o ID do AnyDesk"
+              exit 1
           }
 
-          if ((Get-Item $download).Length -eq 0) {
-            throw "Arquivo vazio."
-          }
+          Write-Host ""
+          Write-Host "=============================="
+          Write-Host "ID:    $id"
+          Write-Host "SENHA: $pw"
+          Write-Host "=============================="
 
-          $signature = Get-AuthenticodeSignature $download
-
-          Write-Host "Status da assinatura: $($signature.Status)"
-
-          if ($signature.Status -ne "Valid") {
-            throw "Assinatura digital invalida."
-          }
-
-          Write-Host "Download e assinatura verificados."
-
-      - name: Testar conectividade HTTPS
-        shell: pwsh
+      - name: Manter ativo
         run: |
-          $ErrorActionPreference = "Stop"
-
-          $hosts = @(
-            "download.anydesk.com"
-          )
-
-          foreach ($hostName in $hosts) {
-            Write-Host "Testando $hostName..."
-
-            $result = Test-NetConnection `
-              -ComputerName $hostName `
-              -Port 443 `
-              -WarningAction SilentlyContinue
-
-            if ($result.TcpTestSucceeded) {
-              Write-Host "HTTPS acessivel."
-            } else {
-              Write-Host "HTTPS indisponivel."
-            }
-          }
-
-      - name: Resumo do Windows
-        shell: pwsh
-        run: |
-          Get-CimInstance Win32_OperatingSystem |
-            Select-Object Caption, Version
-
-          Write-Host "Diagnostico concluido."
+          $end = (Get-Date).AddMinutes(350)
+          while ((Get-Date) -lt $end) { Start-Sleep -Seconds 60 }
           
-            
