@@ -1,5 +1,5 @@
 
-name: Diagnostico AnyDesk
+name: Diagnostico RDP
 
 on:
   workflow_dispatch:
@@ -17,42 +17,62 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-
           $download = "$env:TEMP\AnyDesk.exe"
 
           Write-Host "Baixando AnyDesk..."
+
           Invoke-WebRequest `
             -Uri "https://download.anydesk.com/AnyDesk.exe" `
             -OutFile $download
 
           if (-not (Test-Path $download)) {
-            throw "O download do AnyDesk falhou."
+            throw "Download falhou."
           }
 
           if ((Get-Item $download).Length -eq 0) {
-            throw "O arquivo baixado está vazio."
+            throw "Arquivo vazio."
           }
-
-          Write-Host "Download concluído."
 
           $signature = Get-AuthenticodeSignature $download
 
           Write-Host "Status da assinatura: $($signature.Status)"
 
           if ($signature.Status -ne "Valid") {
-            throw "A assinatura digital não é válida."
+            throw "Assinatura digital invalida."
           }
 
-          Write-Host "Arquivo baixado e assinatura verificada."
+          Write-Host "Download e assinatura verificados."
 
-      - name: Resumo do ambiente
+      - name: Testar conectividade HTTPS
         shell: pwsh
         run: |
-          Write-Host "Sistema operacional:"
+          $ErrorActionPreference = "Stop"
+
+          $hosts = @(
+            "download.anydesk.com"
+          )
+
+          foreach ($hostName in $hosts) {
+            Write-Host "Testando $hostName..."
+
+            $result = Test-NetConnection `
+              -ComputerName $hostName `
+              -Port 443 `
+              -WarningAction SilentlyContinue
+
+            if ($result.TcpTestSucceeded) {
+              Write-Host "HTTPS acessivel."
+            } else {
+              Write-Host "HTTPS indisponivel."
+            }
+          }
+
+      - name: Resumo do Windows
+        shell: pwsh
+        run: |
           Get-CimInstance Win32_OperatingSystem |
             Select-Object Caption, Version
 
-          Write-Host "Conectividade HTTPS:"
-          Test-NetConnection download.anydesk.com -Port 443 |
-            Select-Object ComputerName, RemotePort, TcpTestSucceeded
+          Write-Host "Diagnostico concluido."
+          
             
